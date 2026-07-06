@@ -1,9 +1,9 @@
 #include "system.h"
 
 void SystemBegin() {
-  // to
+  // to do
 }
 
 void SystemUpdate() {
-  // yto
+  // to do
 }
