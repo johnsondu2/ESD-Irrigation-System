@@ -1,9 +1,10 @@
 #include "system.h"
 
 void SystemBegin() {
-  // to
+  // instantiate objects etc.
+  // put objects in array
 }
 
 void SystemUpdate() {
-  // yto
+  // call objects member function for updating state
 }
