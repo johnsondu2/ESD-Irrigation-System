@@ -4,8 +4,8 @@
 class Bed {
  private:
   int analogPin_; // analog pin unique to the Bed's sensor and declared in config.h (e.g. #define KALE_SENSOR A0)
-  int valves_[10]; // array of digital pins unique to the Bed's valves and declared in config.h (e.g. #define KALE_VALVES {2, 3, 4})
-  // initialised with 10 max valves, any unused valves will be set to -1 in config.h (e.g. #define KALE_VALVES {2, 3, 4, -1, -1, -1, -1, -1, -1, -1})
+  int valves_[NUM_MAX_VALVES]; // array of digital pins unique to the Bed's valves and declared in config.h (e.g. #define KALE_VALVES {2, 3, 4})
+  // initialised with a num of max valves, any unused valves will be set to -1 in config.h (e.g. #define KALE_VALVES {2, 3, 4, -1, -1, -1, -1, -1, -1, -1})
 
   float sensorReading_; // sensor reading
   State state_; // current Bed state
@@ -13,7 +13,8 @@ class Bed {
   unsigned long currentMillis_;
 
  public:
-  Bed(int analogPin, int valves[10]);
+  Bed();
+  Bed(const int analogPin, const int valves[NUM_MAX_VALVES]);
   ~Bed();
 
   void Update();

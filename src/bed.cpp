@@ -3,12 +3,25 @@
 #include "bed.h"
 #include "config.h"
 
-Bed::Bed(int analogPin, int valves[10]) {
+Bed::Bed() {
+    // Default-constructed Bed; real pin/valve values are assigned later via operator=
+    analogPin_ = -1;
+
+    for (int i = 0; i < NUM_MAX_VALVES; i++) {
+        valves_[i] = -1;
+    }
+
+    state_ = IDLE;
+    valvesLastSwitched_ = 0;
+}
+
+Bed::Bed(const int analogPin, const int valves[NUM_MAX_VALVES]) {
     // Sets unique analog pin for the Bed's sensor
     analogPin_ = analogPin;
 
     // Sets unique digital pins for the Bed's valves
-    for (int i = 0; i < 10; i++) {
+    // using length of valves array
+    for (int i = 0; i < NUM_MAX_VALVES; i++) {
         valves_[i] = valves[i];
     }
 
@@ -109,7 +122,7 @@ void Bed::UpdateSensorReading() {
 
 void Bed::OpenValves() {
     // to do
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < NUM_MAX_VALVES; i++) {
         if (valves_[i] != -1) { // Check if the valve pin is valid
             // open valve logic here
             // digitalWrite(valves_[i], HIGH); // (assuming HIGH opens the valve)
@@ -119,7 +132,7 @@ void Bed::OpenValves() {
 
 void Bed::CloseValves() {
     // to do
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < NUM_MAX_VALVES; i++) {
         if (valves_[i] != -1) { // Check if the valve pin is valid
             // close valve logic here
             //digitalWrite(valves_[i], LOW); // assuming LOW closes the valve)
