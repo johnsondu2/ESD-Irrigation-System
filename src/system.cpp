@@ -1,7 +1,7 @@
 #include "system.h"
 
 // instantiate array to store Bed objects
-static Bed beds[NUM_BED_TYPES];
+static Bed beds[NUM_BEDS];
 
 void SystemBegin() {
   // instantiate objects etc.
@@ -15,7 +15,7 @@ void SystemBegin() {
 
 void SystemUpdate() {
   // call objects member function for updating state
-  for (int i = 0; i < NUM_BED_TYPES; i++) {
+  for (int i = 0; i < NUM_BEDS; i++) {
     beds[i].Update();
   }
 }

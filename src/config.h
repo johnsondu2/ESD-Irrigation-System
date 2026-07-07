@@ -23,9 +23,8 @@ enum State {
 };
 
 // Enum for Bed types, used specifying bed array size and indexing into the array
-// NUM_BED_TYPES must stay last so its value always equals the number of real bed types above it
-enum BedType {
-    SPINACH, LEEK, SPRING_ONION, GARLIC, PARSLEY, NUM_BED_TYPES
+enum Beds {
+    SPINACH, LEEK, SPRING_ONION, GARLIC, PARSLEY, NUM_BEDS
 };
 
 // Bed class variables

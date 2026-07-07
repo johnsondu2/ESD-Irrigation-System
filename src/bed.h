@@ -13,7 +13,6 @@ class Bed {
   unsigned long currentMillis_;
 
  public:
-  Bed();
   Bed(const int analogPin, const int valves[NUM_MAX_VALVES]);
   ~Bed();
 

@@ -3,18 +3,6 @@
 #include "bed.h"
 #include "config.h"
 
-Bed::Bed() {
-    // Default-constructed Bed; real pin/valve values are assigned later via operator=
-    analogPin_ = -1;
-
-    for (int i = 0; i < NUM_MAX_VALVES; i++) {
-        valves_[i] = -1;
-    }
-
-    state_ = IDLE;
-    valvesLastSwitched_ = 0;
-}
-
 Bed::Bed(const int analogPin, const int valves[NUM_MAX_VALVES]) {
     // Sets unique analog pin for the Bed's sensor
     analogPin_ = analogPin;
