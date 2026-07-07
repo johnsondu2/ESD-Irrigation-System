@@ -3,12 +3,14 @@
 #include "bed.h"
 #include "config.h"
 
-Bed::Bed(int analogPin) {
+Bed::Bed(int analogPin, int valves[10]) {
     // Sets unique analog pin for the Bed's sensor
     analogPin_ = analogPin;
 
     // Sets unique digital pins for the Bed's valves
-    // to do
+    for (int i = 0; i < 10; i++) {
+        valves_[i] = valves[i];
+    }
 
     // All Beds start in the IDLE state
     state_ = IDLE;
@@ -43,6 +45,7 @@ void Bed::Update() {
             valvesLastSwitched_ = currentMillis_;
 
             /* everything between the condition and this line could be streamlined into an OpenValves() function */
+            OpenValves();
 
             state_ = WATERING;
         }
@@ -57,6 +60,7 @@ void Bed::Update() {
             valvesLastSwitched_ = currentMillis_;
 
             /* everything between the condition and this line could be streamlined into an CloseValves() function */
+            CloseValves();
 
             state_ = WAITING;
         }
@@ -67,12 +71,13 @@ void Bed::Update() {
         // Return to WATERING state if moisture readings are below the moisture upper threshold 
         if (sensorReading_ <= MOISTURE_UPPER_THRESHOLD) {
             // Open valves
-            // to do
+            
 
             // Update the time when the valves were last switched
             valvesLastSwitched_ = currentMillis_;
 
             /* everything between the condition and this line could be replaced with the aforementioned OpenValves() function */
+            OpenValves();
 
             state_ = WATERING;
         } else {
@@ -100,4 +105,24 @@ void Bed::UpdateSensorReading() {
 
     // Map the sensor value to a 0-100% range for easy readability
     sensorReading_ = map(sensorValue, SENSOR_LOWER_BOUND, SENSOR_UPPER_BOUND, 0, 100);
+}
+
+void Bed::OpenValves() {
+    // to do
+    for (int i = 0; i < 10; i++) {
+        if (valves_[i] != -1) { // Check if the valve pin is valid
+            // open valve logic here
+            // digitalWrite(valves_[i], HIGH); // (assuming HIGH opens the valve)
+        }
+    }
+}
+
+void Bed::CloseValves() {
+    // to do
+    for (int i = 0; i < 10; i++) {
+        if (valves_[i] != -1) { // Check if the valve pin is valid
+            // close valve logic here
+            //digitalWrite(valves_[i], LOW); // assuming LOW closes the valve)
+        }
+    }
 }
