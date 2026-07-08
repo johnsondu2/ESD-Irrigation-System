@@ -28,7 +28,7 @@ void Bed::Update() {
   // Update the object's sensor reading
   UpdateSensorReading();
   // Update the current millisecond count
-  currentMillis_ = millis(); /* millis() is an Arduino function and will return an error for now */
+  currentMillis_ = millis();
 
   // Update state
   switch (state_) {
@@ -37,15 +37,8 @@ void Bed::Update() {
     // to do
 
     // Open valves and enter WATERING state when the moisture lower threshold is crossed
-        if (sensorReading_ <= MOISTURE_LOWER_THRESHOLD) { /* LOWER_MOISTURE_THRESHOLD is set in config.h */
-            // Open valves
-            /* the valves logic is still up in the air. Beds will have different numbers of valves, so logic will change. loop through a valve array, maybe? */
-            // to do
-
-            // Update the time when the valves were last switched
-            valvesLastSwitched_ = currentMillis_;
-
-            /* everything between the condition and this line could be streamlined into an OpenValves() function */
+        if (sensorReading_ <= MOISTURE_LOWER_THRESHOLD) {
+            // Open valves and update the time when the valves were last switched
             OpenValves();
 
             state_ = WATERING;
@@ -53,14 +46,8 @@ void Bed::Update() {
         break;
     case WATERING:
     // Valves remain open for a set amount of time before closing, then enter WAITING state
-        if (currentMillis_ - valvesLastSwitched_ >= WATERING_INTERVAL) { /* WATERING_INTERVAL is set in config.h */
-            // Close valves
-            // to do
-
-            // Update the time when the valves were last switched
-            valvesLastSwitched_ = currentMillis_;
-
-            /* everything between the condition and this line could be streamlined into an CloseValves() function */
+        if (currentMillis_ - valvesLastSwitched_ >= WATERING_INTERVAL) {
+            // Close valves and update the time when the valves were last switched
             CloseValves();
 
             state_ = WAITING;
@@ -68,16 +55,10 @@ void Bed::Update() {
         break;
     case WAITING:
     // Wait for a set amount of time
-    if (currentMillis_ - valvesLastSwitched_ >= WAITING_INTERVAL) { /* WAITING_INTERVAL is set in config.h */
+    if (currentMillis_ - valvesLastSwitched_ >= WAITING_INTERVAL) {
         // Return to WATERING state if moisture readings are below the moisture upper threshold 
         if (sensorReading_ <= MOISTURE_UPPER_THRESHOLD) {
-            // Open valves
-            
-
-            // Update the time when the valves were last switched
-            valvesLastSwitched_ = currentMillis_;
-
-            /* everything between the condition and this line could be replaced with the aforementioned OpenValves() function */
+            // Open valves and update the time when the valves were last switched
             OpenValves();
 
             state_ = WATERING;
@@ -93,37 +74,49 @@ void Bed::Update() {
     }
 }
 
-// Gets the object's sensor reading
-float Bed::GetSensorReading() const {
-    // to do
-    return 0; /* placeholder return value */
-}
-
 // Updates the object's sensor reading
 void Bed::UpdateSensorReading() {
     // Read actual sensor value
-    float sensorValue = analogRead(analogPin_); /* analogRead() and map() are Arduino functions, so they will return errors for now */
+    float sensorValue = analogRead(analogPin_);
 
     // Map the sensor value to a 0-100% range for easy readability
     sensorReading_ = map(sensorValue, SENSOR_LOWER_BOUND, SENSOR_UPPER_BOUND, 0, 100);
 }
 
+// Returns the Bed's analog pin
+int Bed::GetAnalogPin() {
+    return analogPin_;
+}
+
+// Returns a single valve pin
+int Bed::GetValvePin(int position) {
+    return valves_[position];
+}
+
+// Opens the Bed's valves and updates the time when the valves were last switched
 void Bed::OpenValves() {
     // to do
     for (int i = 0; i < NUM_MAX_VALVES; i++) {
         if (valves_[i] != -1) { // Check if the valve pin is valid
-            // open valve logic here
-            // digitalWrite(valves_[i], HIGH); // (assuming HIGH opens the valve)
+            // Open the valve
+            digitalWrite(valves_[i], HIGH); // (assuming HIGH opens the valve)
         }
     }
+
+    // Update the time when the valves were last switched
+    valvesLastSwitched_ = currentMillis_;
 }
 
+// Closes the Bed's valves and updates the time when the valves were last switched
 void Bed::CloseValves() {
     // to do
     for (int i = 0; i < NUM_MAX_VALVES; i++) {
         if (valves_[i] != -1) { // Check if the valve pin is valid
-            // close valve logic here
-            //digitalWrite(valves_[i], LOW); // assuming LOW closes the valve)
+            // Close the valve
+            digitalWrite(valves_[i], LOW); // assuming LOW closes the valve
         }
     }
+
+    // Update the time when the valves were last switched
+    valvesLastSwitched_ = currentMillis_;
 }

@@ -3,7 +3,7 @@
 
 class Bed {
  private:
-  int analogPin_; // analog pin unique to the Bed's sensor and declared in config.h (e.g. #define KALE_SENSOR A0)
+  int analogPin_; // analog pin unique to the Bed's sensor and declared in config.h (e.g. const int SPINACH_SENSOR_PIN = 1;)
   int valves_[NUM_MAX_VALVES]; // array of digital pins unique to the Bed's valves and declared in config.h (e.g. #define KALE_VALVES {2, 3, 4})
   // initialised with a num of max valves, any unused valves will be set to -1 in config.h (e.g. #define KALE_VALVES {2, 3, 4, -1, -1, -1, -1, -1, -1, -1})
 
@@ -19,7 +19,8 @@ class Bed {
   void Update();
   void UpdateSensorReading();
 
-  float GetSensorReading() const;
+  int GetAnalogPin();
+  int GetValvePin(int position);
 
   void OpenValves();
   void CloseValves();
