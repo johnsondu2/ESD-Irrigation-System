@@ -5,7 +5,6 @@
 static Bed beds[NUM_BEDS];
 
 void SystemBegin() {
-  // instantiate objects etc.
   // put objects in array
   beds[SPINACH] = Bed(SPINACH_SENSOR_PIN, SPINACH_VALVE_PINS);
   beds[LEEK] = Bed(LEEK_SENSOR_PIN, LEEK_VALVE_PINS);
