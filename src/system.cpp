@@ -1,6 +1,7 @@
 #include "system.h"
 #include "config.h"
 #include "api.h"
+#include "tank.h"
 
 #include <WiFi.h>
 #include <Preferences.h>
@@ -8,7 +9,6 @@
 #define WEATHER_UPDATE_INTERVAL 86400000UL // 24 hours in milliseconds
 #define WATER_PUMP_PIN 5 // Example pin for water pump (to do: replace with actual pin number)
 #define VALVE_PIN 4 // Example pin for valve (to do: replace with actual pin number)
-#define ULTRASONIC_SENSOR_PIN 15 // Example pin for ultrasonic sensor (to do: replace with actual pin number)
 
 // constants for the control logic decision-making
 // NOTE: all of these are placeholders and need real-world testing/calibration
@@ -19,6 +19,8 @@
 #define TOTAL_IRRIGATED_AREA_M2 10.0f   // placeholder: combined bed area in square metres
 #define PUMP_FLOW_RATE_MM_PER_MIN (PUMP_FLOW_RATE_L_PER_MIN / TOTAL_IRRIGATED_AREA_M2) // 1L over 1m^2 = 1mm depth
 #define MAX_WATERING_MS 1800000UL       // 30 minute safety cap on a single watering event
+#define TANK_CHECK_INTERVAL_MS 1000UL   // how often to poll the tank sensor while watering
+#define FAULT_RECHECK_INTERVAL_MS 1800000UL // how often to check whether the tank has been refilled while FAULTY
 
 // Object to handle non-volatile storage (NVS) for persisting the soil moisture deficit across reboots
 static Preferences preferences; // NVS-backed storage so the deficit survives reboots
@@ -29,6 +31,10 @@ static float deficitMm = 0.0f; // Running soil moisture deficit (mm)
 static float wateringTargetMm = 0.0f; // Deficit amount being replaced by the in-progress watering event
 static unsigned long wateringStart = 0; // millis() value when the current watering event began
 static unsigned long wateringDurationMs = 0; // How long the current watering event should run for
+
+// time tracking variables for tank water level checks
+static unsigned long lastTankCheck = 0; // Variable to track the last time the tank level was checked
+static unsigned long lastFaultCheck = 0; // Variable to track the last time the system checked for tank refill while in FAULTY state
 
 // variables for weather data tracking
 static unsigned long lastWeatherUpdate = 0; // Variable to track the last time weather data was updated
@@ -101,14 +107,21 @@ void SystemUpdate() {
 
           // 3. Trigger watering if the deficit has crossed the threshold and rain isn't imminent
           if (deficitMm >= MAD_THRESHOLD_MM && !skipForForecast) {
-            wateringTargetMm = deficitMm;
-            wateringDurationMs = min((unsigned long)((wateringTargetMm / PUMP_FLOW_RATE_MM_PER_MIN) * 60000.0f), MAX_WATERING_MS); // 60000 ms in a minute
+            if (IsTankEmpty()) {
+              // Don't open the valve/pump with no water available; persist the deficit and raise a fault instead
+              // Serial.println("Water tank empty - cannot start watering.");
+              preferences.putFloat("deficit_mm", deficitMm);
+              state = FAULTY;
+            } else {
+              wateringTargetMm = deficitMm;
+              wateringDurationMs = min((unsigned long)((wateringTargetMm / PUMP_FLOW_RATE_MM_PER_MIN) * 60000.0f), MAX_WATERING_MS); // 60000 ms in a minute
 
-            digitalWrite(VALVE_PIN, HIGH); // assuming HIGH opens the valve
-            digitalWrite(WATER_PUMP_PIN, HIGH); // assuming HIGH switches the pump on
-            wateringStart = millis();
+              digitalWrite(VALVE_PIN, HIGH); // assuming HIGH opens the valve
+              digitalWrite(WATER_PUMP_PIN, HIGH); // assuming HIGH switches the pump on
+              wateringStart = millis();
 
-            state = WATERING;
+              state = WATERING;
+            }
           } else {
             // Not watering yet; persist the updated deficit so it carries over to tomorrow's fetch
             preferences.putFloat("deficit_mm", deficitMm);
@@ -118,7 +131,24 @@ void SystemUpdate() {
         }
       }
       break;
-    case WATERING:
+      
+    case WATERING: {
+      // Poll the tank periodically (not every loop iteration) in case it runs dry mid-cycle
+      if (millis() - lastTankCheck >= TANK_CHECK_INTERVAL_MS) {
+        lastTankCheck = millis();
+
+        if (IsTankEmpty()) {
+          // Serial.println("Water tank ran empty mid-watering - aborting.");
+          digitalWrite(VALVE_PIN, LOW);
+          digitalWrite(WATER_PUMP_PIN, LOW);
+
+          // Don't reduce the deficit: we can't confirm how much water was actually delivered before running dry
+          preferences.putFloat("deficit_mm", deficitMm);
+          state = FAULTY;
+          break;
+        }
+      }
+
       if (millis() - wateringStart >= wateringDurationMs) {
         digitalWrite(VALVE_PIN, LOW); // assuming LOW closes the valve
         digitalWrite(WATER_PUMP_PIN, LOW); // assuming LOW switches the pump off
@@ -129,9 +159,20 @@ void SystemUpdate() {
 
         state = IDLE;
       }
-        break;
-    case FAULTY:
-        // to do
-        break;
+      break;
     }
+    case FAULTY: {
+      // Periodically check whether the tank has been refilled, and resume normal operation if so
+      if (millis() - lastFaultCheck >= FAULT_RECHECK_INTERVAL_MS) {
+        lastFaultCheck = millis();
+
+        if (!IsTankEmpty()) {
+          // Serial.println("Water tank refilled - resuming normal operation.");
+          state = IDLE;
+        }
+      }
+      break;
+    }
+    }
+
 }
