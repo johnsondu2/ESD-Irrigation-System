@@ -3,12 +3,36 @@
 #include "api.h"
 
 #include <WiFi.h>
+#include <Preferences.h>
 
 #define WEATHER_UPDATE_INTERVAL 86400000UL // 24 hours in milliseconds
+#define WATER_PUMP_PIN 5 // Example pin for water pump (to do: replace with actual pin number)
+#define VALVE_PIN 4 // Example pin for valve (to do: replace with actual pin number)
+#define ULTRASONIC_SENSOR_PIN 15 // Example pin for ultrasonic sensor (to do: replace with actual pin number)
 
+// constants for the control logic decision-making
+// NOTE: all of these are placeholders and need real-world testing/calibration
+#define MAD_THRESHOLD_MM 20.0f          // deficit (mm) that triggers watering (Management Allowable Depletion)
+#define RAIN_SKIP_PROB_PERCENT 70       // skip watering if tomorrow's rain probability >= this
+#define RAIN_SKIP_MM 5.0f               // skip watering if tomorrow's forecasted rain >= this
+#define PUMP_FLOW_RATE_L_PER_MIN 5.0f   // placeholder: litres/minute delivered by the pump
+#define TOTAL_IRRIGATED_AREA_M2 10.0f   // placeholder: combined bed area in square metres
+#define PUMP_FLOW_RATE_MM_PER_MIN (PUMP_FLOW_RATE_L_PER_MIN / TOTAL_IRRIGATED_AREA_M2) // 1L over 1m^2 = 1mm depth
+#define MAX_WATERING_MS 1800000UL       // 30 minute safety cap on a single watering event
+
+// Object to handle non-volatile storage (NVS) for persisting the soil moisture deficit across reboots
+static Preferences preferences; // NVS-backed storage so the deficit survives reboots
+
+// global variables for the system
+static State state = IDLE; // Initialize the system state to IDLE
+static float deficitMm = 0.0f; // Running soil moisture deficit (mm)
+static float wateringTargetMm = 0.0f; // Deficit amount being replaced by the in-progress watering event
+static unsigned long wateringStart = 0; // millis() value when the current watering event began
+static unsigned long wateringDurationMs = 0; // How long the current watering event should run for
+
+// variables for weather data tracking
 static unsigned long lastWeatherUpdate = 0; // Variable to track the last time weather data was updated
 static bool initialFetchDone = false; // Flag to force the system to call the API weather data as soon as the system is booted up
-static State state = IDLE; // Initialize the system state to IDLE
 
 void SystemBegin() {
   // Initialize serial communication for debugging
@@ -25,6 +49,18 @@ void SystemBegin() {
   }
   
   Serial.println("\nConnected to WiFi!");
+
+  // Set output pins for the water pump and valve
+  pinMode(WATER_PUMP_PIN, OUTPUT); 
+  pinMode(VALVE_PIN, OUTPUT); 
+
+  // set up ultrasonic sensor of water tank as input
+  pinMode(ULTRASONIC_SENSOR_PIN, INPUT); 
+
+  // Load the persisted soil moisture deficit so it survives reboots
+  preferences.begin("irrigation", false);
+  deficitMm = preferences.getFloat("deficit_mm", 0.0f);
+
 }
 
 void SystemUpdate() {
@@ -52,26 +88,47 @@ void SystemUpdate() {
         if (fetchWeatherData(currentWeather)) {
           initialFetchDone = true; // Mark that the initial weather data has been fetched from the API
 
-          ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-          // INSERT DECISION MAKIONG LOGIC HERE
+          DayForecast &today = currentWeather.days[1];
+          DayForecast &tomorrow = currentWeather.days[2];
+          // index 1 is today's data, index 0 is yesterday's, indices 2 and 3 are the next two days' forecasts.
 
-          // examples of how to fetch weather data for each data type; you can use these to call the data for implementing decision logic
-          float todaysRain = currentWeather.days[1].rain;
-          float todaysPrecipitation = currentWeather.days[1].precipitation;
-          float todaysET0 = currentWeather.days[1].evapotranspiration;
-          int todaysRainProbMax = currentWeather.days[1].rainProbMax;
-          // the index 1 is used to get today's data. index 0 is yesterday's data, and indices 2 and 3 are for the next two days' forecasts.
+          // 1. Update the running water balance: ET0 is water lost, rain is water gained. Floor at 0 to avoid negative deficit.
+          deficitMm += today.evapotranspiration - today.rain;
+          deficitMm = max(deficitMm, 0.0f);
 
-          ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+          // 2. Forecast-based skip guard: don't water if significant rain is expected tomorrow
+          bool skipForForecast = (tomorrow.rainProbMax >= RAIN_SKIP_PROB_PERCENT) || (tomorrow.rain >= RAIN_SKIP_MM);
 
-          // to do: implement decision making logic, open valve, switch on pump, transition to watering state, etc
+          // 3. Trigger watering if the deficit has crossed the threshold and rain isn't imminent
+          if (deficitMm >= MAD_THRESHOLD_MM && !skipForForecast) {
+            wateringTargetMm = deficitMm;
+            wateringDurationMs = min((unsigned long)((wateringTargetMm / PUMP_FLOW_RATE_MM_PER_MIN) * 60000.0f), MAX_WATERING_MS); // 60000 ms in a minute
+
+            digitalWrite(VALVE_PIN, HIGH); // assuming HIGH opens the valve
+            digitalWrite(WATER_PUMP_PIN, HIGH); // assuming HIGH switches the pump on
+            wateringStart = millis();
+
+            state = WATERING;
+          } else {
+            // Not watering yet; persist the updated deficit so it carries over to tomorrow's fetch
+            preferences.putFloat("deficit_mm", deficitMm);
+          }
         } else {
           Serial.println("Failed to fetch weather. Using fallback sensor logic.");
         }
       }
       break;
     case WATERING:
-      // to do
+      if (millis() - wateringStart >= wateringDurationMs) {
+        digitalWrite(VALVE_PIN, LOW); // assuming LOW closes the valve
+        digitalWrite(WATER_PUMP_PIN, LOW); // assuming LOW switches the pump off
+
+        // Assume the target amount was delivered; reduce the deficit and persist it
+        deficitMm = max(deficitMm - wateringTargetMm, 0.0f);
+        preferences.putFloat("deficit_mm", deficitMm);
+
+        state = IDLE;
+      }
         break;
     case FAULTY:
         // to do
