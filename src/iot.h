@@ -3,10 +3,9 @@
 // Call once in setup()
 void IoTSetup();
 
-// Call every loop() iteration. Keeps WiFi/MQTT alive
+// Call every SystemUpdate() iteration. Keeps WiFi/MQTT alive and publishes telemetry on its own internal timer
 void IoTLoop();
 
-// Call whenever we have new sensor readings to send
-void IoTSendTelemetry(Bed beds[], int numBeds);
-
-void IoTSetBeds(Bed beds[], int numBeds);
+// Publishes an immediate telemetry snapshot. IoTLoop() (helper) call if want to force an
+// out-of-cycle update (e.g. right after a state change).
+void IoTSendTelemetry();

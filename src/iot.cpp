@@ -5,93 +5,86 @@
 #include <WiFi.h>
 
 #include "config.h"
+#include "system.h"
+#include "tank.h"
 
-// (wifi credentials have been moved to config.h because they are also used in system.cpp)
+// ThingsBoard Cloud connection info
+static const char* TB_SERVER = "thingsboard.cloud";
+static const int TB_PORT = 1883;  // switch to 8883 when we finalise evertyhing (encryption)
 
-// ThingsBoard connection info
-const char* TB_SERVER = "thingsboard.cloud";
-const char* TB_ACCESS_TOKEN = "token_here";
+static WiFiClient espClient;
+static PubSubClient client(espClient);
 
-WiFiClient espClient;
-PubSubClient client(espClient);  // library has own functions
+static unsigned long lastTelemetryPublish = 0;
+static const unsigned long TELEMETRY_INTERVAL_MS = 30000;  // publish every 30s, tune as needed
 
-Bed* bedsPtr = nullptr;
-int numBedsGlobal = 0;
+// ————————————————————————————————————————————————————————————————————————
 
-// –——––––––––––––––––––––––––––––––––––
-
-void ConnectWiFi() {  // OK
+static void ConnectWiFi() {
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("Connecting to WiFi");
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
-  Serial.println("WiFi connected");
+  Serial.println("\nWiFi connected");
 }
 
-void ReconnectMQTT() {  // OK
+static void ReconnectMQTT() {
   while (!client.connected()) {
     Serial.println("Connecting to ThingsBoard...");
-    if (client.connect("ESP32Device", TB_ACCESS_TOKEN, NULL)) {
+    // The access token goes in the MQTT username slot; password stays empty
+    if (client.connect("ESP32GardenController", TB_ACCESS_TOKEN, NULL)) {
       Serial.println("Connected to ThingsBoard");
-      client.subscribe("v1/devices/me/rpc/request/+");  // listen for commands
     } else {
+      Serial.print("Connect failed, rc=");
+      Serial.println(client.state());
       delay(2000);
     }
   }
 }
 
-// TO DO: implement handling of user commands (would need to update fsm logic)
-void MQTTCallback(char* topic, byte* payload, unsigned int length) {
-  if (bedsPtr == nullptr) return;
-
-  StaticJsonDocument<200> doc;
-  deserializeJson(doc, payload, length);
-
-  String method = doc["method"];
-  if (method == "setValve") {
-    int bedIndex = doc["params"]["bed"];
-    String state = doc["params"]["state"];
-
-    if (bedIndex >= 0 && bedIndex < numBedsGlobal) {
-      if (state == "open") {
-        bedsPtr[bedIndex].OpenValves(); 
-      } else {
-        bedsPtr[bedIndex].CloseValves(); 
-      }
-    }
+static const char* StateToString(State s) {
+  switch (s) {
+    case IDLE:
+      return "IDLE";
+    case WATERING:
+      return "WATERING";
+    case FAULTY:
+      return "FAULTY";
   }
+  return "UNKNOWN";
 }
 
-// ——————————————————————————————— public —————————————————————————————————
+// ——————————————————————————————————— public ———————————————————————————————————
 
 void IoTSetup() {
   ConnectWiFi();
-  client.setServer(TB_SERVER, 1883);
-  client.setCallback(MQTTCallback);
+  client.setServer(TB_SERVER, TB_PORT);
 }
 
 void IoTLoop() {
   if (!client.connected()) {
     ReconnectMQTT();
   }
-  client.loop();
+  client.loop();  // keeps the MQTT connection alive - must run every loop
+
+  if (millis() - lastTelemetryPublish >= TELEMETRY_INTERVAL_MS) {
+    lastTelemetryPublish = millis();
+    IoTSendTelemetry();
+  }
 }
 
-void IoTSendTelemetry(Bed beds[], int numBeds) {
-  StaticJsonDocument<512> telemetry;
+void IoTSendTelemetry() {
+  StaticJsonDocument<256> telemetry;
 
-  for (int i = 0; i < numBeds; i++) {
-    String key = "bed" + String(i) + "_moisture";
-    telemetry[key] = beds[i].GetSensorReading(); 
-  }
+  telemetry["deficit_mm"] = GetDeficitMm();
+  telemetry["tank_empty"] = IsTankEmpty();
+  telemetry["tank_level_percent"] = GetTankLevelPercent();
+  telemetry["state"] = StateToString(GetState());
+  telemetry["watering"] = (GetState() == WATERING);
 
-  char buffer[512];
+  char buffer[256];
   serializeJson(telemetry, buffer);
   client.publish("v1/devices/me/telemetry", buffer);
-}
-
-void IoTSetBeds(Bed beds[], int numBeds) {
-  bedsPtr = beds;
-  numBedsGlobal = numBeds;
 }
