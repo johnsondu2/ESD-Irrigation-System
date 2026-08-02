@@ -76,7 +76,7 @@ void IoTLoop() {
 }
 
 void IoTSendTelemetry() {
-  StaticJsonDocument<256> telemetry;
+  JsonDocument telemetry;
 
   telemetry["deficit_mm"] = GetDeficitMm();
   telemetry["tank_empty"] = IsTankEmpty();
