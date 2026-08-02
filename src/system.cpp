@@ -47,7 +47,8 @@ void SystemBegin() {
   pinMode(VALVE_PIN, OUTPUT);
 
   // set up ultrasonic sensor of water tank as input
-  pinMode(ULTRASONIC_SENSOR_PIN, INPUT);
+  pinMode(ULTRA_ECHO, INPUT);
+  pinMode(ULTRA_TRIG, OUTPUT);
 
   // Load the persisted soil moisture deficit so it survives reboots
   preferences.begin("irrigation", false);

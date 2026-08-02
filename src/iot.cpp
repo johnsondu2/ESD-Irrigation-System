@@ -16,7 +16,7 @@ static WiFiClient espClient;
 static PubSubClient client(espClient);
 
 static unsigned long lastTelemetryPublish = 0;
-static const unsigned long TELEMETRY_INTERVAL_MS = 30000;  // publish every 30s, tune as needed
+static const unsigned long TELEMETRY_INTERVAL_MS = 500;  // maybe publish every 30s ms?
 
 // ————————————————————————————————————————————————————————————————————————
 

@@ -29,7 +29,8 @@ bool fetchWeatherData(WeatherData& data) {
   if (httpCode == HTTP_CODE_OK) {
     // DynamicJsonDocument / JsonDocument automatically manages sizing in v7
     JsonDocument doc;
-    DeserializationError error = deserializeJson(doc, http.getStream());  // http.getStream() is the JSON response from the API
+
+    DeserializationError error = deserializeJson(doc, http.getString());  // changed from http.getStream() to getString() bc getStream() caused intermittent parse failures. getString() buffers the full response first, avoiding stream timing issues
 
     if (!error) {
       // Extract the "daily" object from the JSON response
