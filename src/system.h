@@ -1,8 +1,10 @@
 #pragma once
 
 #define WEATHER_UPDATE_INTERVAL 86400000UL  // 24 hours in milliseconds
-#define WATER_PUMP_PIN 5                    // Example pin for water pump (to do: replace with actual pin number)
-#define VALVE_PIN 4                         // Example pin for valve (to do: replace with actual pin number)
+
+// motor driver pins for PWM control
+int E1 = 5;
+int M1 = 4;
 
 // constants for the control logic decision-making
 // NOTE: all of these are placeholders and need real-world testing/calibration

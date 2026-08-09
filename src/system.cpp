@@ -43,8 +43,10 @@ void SystemBegin() {
   Serial.println("\nConnected to WiFi!");
 
   // Set output pins for the water pump and valve
-  pinMode(WATER_PUMP_PIN, OUTPUT);
-  pinMode(VALVE_PIN, OUTPUT);
+  // pinMode(WATER_PUMP_PIN, OUTPUT);
+  // pinMode(VALVE_PIN, OUTPUT);
+  pinMode(M1, OUTPUT);  // for VALVE
+  pinMode(E1, OUTPUT);  // for VALVE
 
   // set up ultrasonic sensor of water tank as input
   pinMode(ULTRA_ECHO, INPUT);
@@ -166,14 +168,20 @@ void SystemUpdate() {
   }
 }
 
-void StartWater() {                    // replaced direct write with function
-  digitalWrite(VALVE_PIN, HIGH);       // assuming HIGH opens the valve
-  digitalWrite(WATER_PUMP_PIN, HIGH);  // assuming HIGH switches the pump on
+void StartWater() {
+  /* FOR OPENING THE VALVE */
+  digitalWrite(M1, HIGH);  // Set polarity for OPEN
+  digitalWrite(E1, HIGH);  // POWER ON
+  delay(80);               // Send 80 ms pulse
+  digitalWrite(E1, LOW);   // POWER OFF
 }
 
 void StopWater() {
-  digitalWrite(VALVE_PIN, LOW);       // assuming HIGH opens the valve
-  digitalWrite(WATER_PUMP_PIN, LOW);  // assuming HIGH switches the pump on
+  /* FOR CLOSING THE VALVE */
+  digitalWrite(M1, LOW);   // Set polarity for OPEN
+  digitalWrite(E1, HIGH);  // POWER ON
+  delay(80);               // Send 80 ms pulse
+  digitalWrite(E1, LOW);   // POWER OFF
 }
 
 float GetDeficitMm() { return deficitMm; }
