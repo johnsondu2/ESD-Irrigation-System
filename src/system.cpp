@@ -6,7 +6,7 @@
 #include "api.h"
 #include "config.h"
 #include "iot.h"
-#include "tank.h"
+#include "receiver.h"
 
 // Object to handle non-volatile storage (NVS) for persisting the soil moisture deficit across reboots
 static Preferences preferences;  // NVS-backed storage so the deficit survives reboots
@@ -18,9 +18,8 @@ static float wateringTargetMm = 0.0f;         // Deficit amount being replaced b
 static unsigned long wateringStart = 0;       // millis() value when the current watering event began
 static unsigned long wateringDurationMs = 0;  // How long the current watering event should run for
 
-// time tracking variables for tank water level checks
-static unsigned long lastTankCheck = 0;   // Variable to track the last time the tank level was checked
-static unsigned long lastFaultCheck = 0;  // Variable to track the last time the system checked for tank refill while in FAULTY state
+// Tank water level state now lives in receiver.cpp (populated from the tank ESP32 over ESP-NOW) and is
+// read here via IsTankEmpty()/GetTankLevelPercent()/GetTankDistanceCm() from receiver.h
 
 // variables for weather data tracking
 static unsigned long lastWeatherUpdate = 0;  // Variable to track the last time weather data was updated
@@ -46,8 +45,8 @@ void SystemBegin() {
   pinMode(WATER_PUMP_PIN, OUTPUT);
   pinMode(VALVE_PIN, OUTPUT);
 
-  // set up ultrasonic sensor of water tank as input
-  pinMode(ULTRASONIC_SENSOR_PIN, INPUT);
+  // Start listening for tank level readings from the tank ESP32 (WiFi is already up at this point)
+  ReceiverBegin();
 
   // Load the persisted soil moisture deficit so it survives reboots
   preferences.begin("irrigation", false);
@@ -123,20 +122,17 @@ void SystemUpdate() {
       break;
 
     case WATERING: {
-      // Poll the tank periodically (not every loop iteration) in case it runs dry mid-cycle
-      if (millis() - lastTankCheck >= TANK_CHECK_INTERVAL_MS) {
-        lastTankCheck = millis();
+      // IsTankEmpty() is a cheap read of state pushed by the tank ESP32 (not a physical sensor poll), so it's
+      // safe to check every loop iteration in case the tank runs dry mid-cycle
+      if (IsTankEmpty()) {
+        // Serial.println("Water tank ran empty mid-watering - aborting.");
 
-        if (IsTankEmpty()) {
-          // Serial.println("Water tank ran empty mid-watering - aborting.");
+        StopWater();
 
-          StopWater();
-
-          // Don't reduce the deficit: we can't confirm how much water was actually delivered before running dry
-          preferences.putFloat("deficit_mm", deficitMm);
-          state = FAULTY;
-          break;
-        }
+        // Don't reduce the deficit: we can't confirm how much water was actually delivered before running dry
+        preferences.putFloat("deficit_mm", deficitMm);
+        state = FAULTY;
+        break;
       }
 
       if (millis() - wateringStart >= wateringDurationMs) {
@@ -151,14 +147,10 @@ void SystemUpdate() {
       break;
     }
     case FAULTY: {
-      // Periodically check whether the tank has been refilled, and resume normal operation if so
-      if (millis() - lastFaultCheck >= FAULT_RECHECK_INTERVAL_MS) {
-        lastFaultCheck = millis();
-
-        if (!IsTankEmpty()) {
-          // Serial.println("Water tank refilled - resuming normal operation.");
-          state = IDLE;
-        }
+      // Check whether the tank has been refilled, and resume normal operation if so
+      if (!IsTankEmpty()) {
+        // Serial.println("Water tank refilled - resuming normal operation.");
+        state = IDLE;
       }
       break;
     }

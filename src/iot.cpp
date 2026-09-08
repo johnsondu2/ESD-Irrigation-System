@@ -5,8 +5,8 @@
 #include <WiFi.h>
 
 #include "config.h"
+#include "receiver.h"
 #include "system.h"
-#include "tank.h"
 
 // ThingsBoard Cloud connection info
 static const char* TB_SERVER = "thingsboard.cloud";
