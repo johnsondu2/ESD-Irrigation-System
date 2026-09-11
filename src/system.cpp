@@ -1,179 +1,132 @@
 #include "system.h"
 
-#include <Preferences.h>
+#include <Arduino.h>
+#include <esp_now.h>
 #include <WiFi.h>
 
-#include "api.h"
 #include "config.h"
-#include "iot.h"
-#include "tank.h"
 
-// Object to handle non-volatile storage (NVS) for persisting the soil moisture deficit across reboots
-static Preferences preferences;  // NVS-backed storage so the deficit survives reboots
+// time tracking variable for tank water level checks
+static unsigned long lastTankCheck = 0;  // Variable to track the last time the tank level was checked
 
-// global variables for the system
-static State state = IDLE;                    // Initialize the system state to IDLE
-static float deficitMm = 0.0f;                // Running soil moisture deficit (mm)
-static float wateringTargetMm = 0.0f;         // Deficit amount being replaced by the in-progress watering event
-static unsigned long wateringStart = 0;       // millis() value when the current watering event began
-static unsigned long wateringDurationMs = 0;  // How long the current watering event should run for
+// --- ESP-NOW CONFIGURATION ---
+uint8_t receiverAddress[] = {0x20, 0x50, 0x0D, 0x00, 0x34, 0x44};  // TODO: confirm this is gardenESP32's actual MAC address
+esp_now_peer_info_t peerInfo;
 
-// time tracking variables for tank water level checks
-static unsigned long lastTankCheck = 0;   // Variable to track the last time the tank level was checked
-static unsigned long lastFaultCheck = 0;  // Variable to track the last time the system checked for tank refill while in FAULTY state
+// We use a long integer to match the sensor calculation data type
+long distanceData = 0;
 
-// variables for weather data tracking
-static unsigned long lastWeatherUpdate = 0;  // Variable to track the last time weather data was updated
-static bool initialFetchDone = false;        // Flag to force the system to call the API weather data as soon as the system is booted up
+// Forward declaration - defined below, but used in SystemBegin() first
+void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status);
+
+// --- ULTRASONIC SENSOR CONFIGURATION ---
+#define TRIG 17   // Connect to HC-SR04 Trig
+#define ECHO 16   // Connect to HC-SR04 Echo (requires 3.3V voltage divider)
+#define MAX_TIMEOUT 26100 // 4.5m maximum physical range
 
 void SystemBegin() {
   // Initialize serial communication for debugging
   Serial.begin(115200);
 
-  // Connect to WiFi
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.print("Connecting to WiFi");
+  // Initialize hardware sensor lines
+  usonicsetup();
+  Serial.println("HC-SR04 Sensor Initialized (GPIO 17=TX, GPIO 16=RX).");
 
-  // Wait for connection
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
+  // Initialize Wi-Fi Station mode (required by ESP-NOW)
+  WiFi.mode(WIFI_STA);
+
+  // Initialize ESP-NOW
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("Error initializing ESP-NOW");
+    return;
   }
 
-  Serial.println("\nConnected to WiFi!");
+  // Register transmission status tracking
+  esp_now_register_send_cb(OnDataSent);
 
-  // Set output pins for the water pump and valve
-  pinMode(WATER_PUMP_PIN, OUTPUT);
-  pinMode(VALVE_PIN, OUTPUT);
+  // Pair with the gardenESP32 receiver board
+  memcpy(peerInfo.peer_addr, receiverAddress, 6);
+  peerInfo.channel = 0;
+  peerInfo.encrypt = false;
 
-  // set up ultrasonic sensor of water tank as input
-  pinMode(ULTRASONIC_SENSOR_PIN, INPUT);
-
-  // Load the persisted soil moisture deficit so it survives reboots
-  preferences.begin("irrigation", false);
-  deficitMm = preferences.getFloat("deficit_mm", 0.0f);
-
-  // Connect to ThingsBoard and start reporting (WiFi is already up at this point)
-  IoTSetup();
+  // Add the peer to the ESP-NOW peer list
+  if (esp_now_add_peer(&peerInfo) != ESP_OK) {
+    Serial.println("Failed to add peer");
+    return;
+  }
 }
 
+// Reads the tank distance and wirelessly sends it to gardenESP32 every TANK_CHECK_INTERVAL_MS milliseconds (1 hour)
 void SystemUpdate() {
-  // Keeps the MQTT connection alive and publishes telemetry on its own timer.
-  // Runs every cycle regardless of system state.
-  IoTLoop();
+  unsigned long currentMillis = millis();
 
-  // Attempts to reconnect to WiFi if disconnected, but only every 10 seconds to avoid spamming the network
-  if (WiFi.status() != WL_CONNECTED) {
-    static unsigned long lastReconnectAttempt = 0;
+  if (currentMillis - lastTankCheck >= TANK_CHECK_INTERVAL_MS) {
+    lastTankCheck = currentMillis;
 
-    if (millis() - lastReconnectAttempt >= 10000) {
-      lastReconnectAttempt = millis();
-      WiFi.reconnect();
+    long duration = usonic(MAX_TIMEOUT);
+
+    // Process sensor state logic and calculate data payload
+    if (duration == 0) {
+      Serial.println("Error: Sensor line high or busy");
+      distanceData = -1; // Flag error state to receiver
+    } else if (duration >= MAX_TIMEOUT) {
+      Serial.println("Out of range (>4.5m)");
+      distanceData = -2; // Flag out of range state to receiver
+    } else if (duration < 100) {
+      Serial.println("Error: Sensor disconnected or timed out");
+      distanceData = -3; // Flag physical connection issue to receiver
+    } else {
+      distanceData = duration / 58; // Calculate actual distance in cm
+      Serial.print("Distance: ");
+      Serial.print(distanceData);
+      Serial.println(" cm");
     }
-  }
 
-  switch (state) {
-    case IDLE:
-      // Regularly check for weather updates once a day (or on system bootup) if WiFi is connected
-      if ((!initialFetchDone || (millis() - lastWeatherUpdate >= WEATHER_UPDATE_INTERVAL)) && (WiFi.status() == WL_CONNECTED)) {
-        // Update the last weather update timestamp
-        lastWeatherUpdate = millis();
-
-        // Create a WeatherData struct to hold the fetched data
-        WeatherData currentWeather;
-
-        // Fetch weather data and check if successful
-        if (fetchWeatherData(currentWeather)) {
-          initialFetchDone = true;  // Mark that the initial weather data has been fetched from the API
-
-          DayForecast& today = currentWeather.days[1];
-          DayForecast& tomorrow = currentWeather.days[2];
-          // index 1 is today's data, index 0 is yesterday's, indices 2 and 3 are the next two days' forecasts.
-
-          // 1. Update the running water balance: ET0 is water lost, rain is water gained. Floor at 0 to avoid negative deficit.
-          deficitMm += today.evapotranspiration - today.rain;
-          deficitMm = max(deficitMm, 0.0f);
-
-          // 2. Forecast-based skip guard: don't water if significant rain is expected tomorrow
-          bool skipForForecast = (tomorrow.rainProbMax >= RAIN_SKIP_PROB_PERCENT) || (tomorrow.rain >= RAIN_SKIP_MM);
-
-          // 3. Trigger watering if the deficit has crossed the threshold and rain isn't imminent
-          if (deficitMm >= MAD_THRESHOLD_MM && !skipForForecast) {
-            if (IsTankEmpty()) {
-              // Don't open the valve/pump with no water available; persist the deficit and raise a fault instead
-              // Serial.println("Water tank empty - cannot start watering.");
-              preferences.putFloat("deficit_mm", deficitMm);
-              state = FAULTY;
-            } else {
-              wateringTargetMm = deficitMm;
-              wateringDurationMs = min((unsigned long)((wateringTargetMm / PUMP_FLOW_RATE_MM_PER_MIN) * 60000.0f), MAX_WATERING_MS);  // 60000 ms in a minute
-              StartWater();
-              wateringStart = millis();
-
-              state = WATERING;
-            }
-          } else {
-            // Not watering yet; persist the updated deficit so it carries over to tomorrow's fetch
-            preferences.putFloat("deficit_mm", deficitMm);
-          }
-        } else {
-          Serial.println("Failed to fetch weather. Using fallback sensor logic.");
-        }
-      }
-      break;
-
-    case WATERING: {
-      // Poll the tank periodically (not every loop iteration) in case it runs dry mid-cycle
-      if (millis() - lastTankCheck >= TANK_CHECK_INTERVAL_MS) {
-        lastTankCheck = millis();
-
-        if (IsTankEmpty()) {
-          // Serial.println("Water tank ran empty mid-watering - aborting.");
-
-          StopWater();
-
-          // Don't reduce the deficit: we can't confirm how much water was actually delivered before running dry
-          preferences.putFloat("deficit_mm", deficitMm);
-          state = FAULTY;
-          break;
-        }
-      }
-
-      if (millis() - wateringStart >= wateringDurationMs) {
-        StopWater();
-
-        // Assume the target amount was delivered; reduce the deficit and persist it
-        deficitMm = max(deficitMm - wateringTargetMm, 0.0f);
-        preferences.putFloat("deficit_mm", deficitMm);
-
-        state = IDLE;
-      }
-      break;
-    }
-    case FAULTY: {
-      // Periodically check whether the tank has been refilled, and resume normal operation if so
-      if (millis() - lastFaultCheck >= FAULT_RECHECK_INTERVAL_MS) {
-        lastFaultCheck = millis();
-
-        if (!IsTankEmpty()) {
-          // Serial.println("Water tank refilled - resuming normal operation.");
-          state = IDLE;
-        }
-      }
-      break;
-    }
+    // Transmit the distance payload to gardenESP32 (which computes tank-empty / percentage from it)
+    Serial.println("Broadcasting distance payload via ESP-NOW...");
+    esp_now_send(receiverAddress, (uint8_t *) &distanceData, sizeof(distanceData));
   }
 }
 
-void StartWater() {                    // replaced direct write with function
-  digitalWrite(VALVE_PIN, HIGH);       // assuming HIGH opens the valve
-  digitalWrite(WATER_PUMP_PIN, HIGH);  // assuming HIGH switches the pump on
+// ESP-NOW Core v2.x Callback when data is sent
+void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  Serial.print("Transmission Status: ");
+  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Success" : "Fail");
 }
 
-void StopWater() {
-  digitalWrite(VALVE_PIN, LOW);       // assuming HIGH opens the valve
-  digitalWrite(WATER_PUMP_PIN, LOW);  // assuming HIGH switches the pump on
+// Sensor pin layout initialization
+void usonicsetup(void) {
+  pinMode(ECHO, INPUT);
+  pinMode(TRIG, OUTPUT);
+  digitalWrite(TRIG, LOW);
+  delay(50);
 }
 
-float GetDeficitMm() { return deficitMm; }
-State GetState() { return state; }
+// Low-level timing routine for pulse capture
+long usonic(long utimeout) {
+  if (digitalRead(ECHO) == HIGH) {
+    return 0;
+  }
+
+  digitalWrite(TRIG, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG, LOW);
+
+  long startTime = micros();
+  while (digitalRead(ECHO) == LOW) {
+    if ((micros() - startTime) > 2000) {
+      return 99;
+    }
+  }
+
+  long pulseStartTime = micros();
+  while (digitalRead(ECHO) == HIGH) {
+    if ((micros() - pulseStartTime) > utimeout) {
+      return utimeout;
+    }
+  }
+
+  return (micros() - pulseStartTime);
+}
