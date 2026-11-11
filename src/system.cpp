@@ -6,7 +6,6 @@
 #include "api.h"
 #include "config.h"
 #include "iot.h"
-#include "receiver.h"
 
 // Object to handle non-volatile storage (NVS) for persisting the soil moisture deficit across reboots
 static Preferences preferences;  // NVS-backed storage so the deficit survives reboots
@@ -14,12 +13,11 @@ static Preferences preferences;  // NVS-backed storage so the deficit survives r
 // global variables for the system
 static State state = IDLE;                    // Initialize the system state to IDLE
 static float deficitMm = 0.0f;                // Running soil moisture deficit (mm)
+
+// the below is necessary?
 static float wateringTargetMm = 0.0f;         // Deficit amount being replaced by the in-progress watering event
 static unsigned long wateringStart = 0;       // millis() value when the current watering event began
 static unsigned long wateringDurationMs = 0;  // How long the current watering event should run for
-
-// Tank water level state now lives in receiver.cpp (populated from the tank ESP32 over ESP-NOW) and is
-// read here via IsTankEmpty()/GetTankLevelPercent()/GetTankDistanceCm() from receiver.h
 
 // variables for weather data tracking
 static unsigned long lastWeatherUpdate = 0;  // Variable to track the last time weather data was updated
