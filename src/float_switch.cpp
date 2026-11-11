@@ -1,4 +1,4 @@
-#include "float.h"
+#include "float_switch.h"
 
 FloatSwitch::FloatSwitch(uint8_t pin, uint16_t debounceMs)
     : _pin(pin),
