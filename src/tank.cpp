@@ -1,44 +1,38 @@
-#include "ultrasonic_tank.h"
+#include "tank.h"
 
+#include "float.h"
+#include "ultrasonic.h"
 #include <Arduino.h>
 #include <esp_now.h>
 #include <algorithm>  // Required for std::max and std::min
 
-// Tank state, owned here and updated whenever a reading arrives from the tank ESP32
-static float tankDistanceCm = -1.0f;      // last distance received, in cm; -1 = unknown / transmitter-reported fault
+Tank::Tank(FloatSwitch& lowSwitch, UltrasonicSensor& ultrasonicSensor){
+        tank_float = lowSwitch;
+        tank_ultrasonic = ultrasonicSensor;
+        tank_float.begin();  // Initialize the float switch pin
+    }
 
-// Triggers the ultrasonic ranger and returns the measured distance in cm,
-// or -1.0f if no echo was received (sensor fault/out of range)
-float ReadTankDistanceCm() {
+bool Tank::IsTankEmpty() {
+    if (!tank_float.isClosed()) {
+        return true;  // HIGH signal from the float switch indicates the tank is empty
+    }
+    return false;
+}
 
-  // Ensure trigger pin is low
-  digitalWrite(ULTRA_TRIG, LOW);
-  delayMicroseconds(2);
-
-  // 10 us pulse to the trigger pin
-  digitalWrite(ULTRA_TRIG, HIGH);
-  delayMicroseconds(10);
-
-  digitalWrite(ULTRA_TRIG, LOW);
-
-  // Read echo pulse duration with a 30,000us max timeout as a fail-safe
-  long duration = pulseIn(ULTRA_ECHO, HIGH, 30000);
-
-  // guard
-  if (duration == 0) {
-    Serial.println("ultra: Error / Timeout");
-    return -1.0f;
+float Tank::GetTankLevelPercent() {
+  if (tank_ultrasonic.readDistanceCm() < 0) {
+    return -1.0f;  // unknown
   }
 
-  // calc distance, using speed of air = 343 m/s, and dividing by 2 for the round trip
-  float dist = (duration * 0.0343f) / 2.0f;
+  float percent = (TANK_EMPTY_DISTANCE_CM - tank_ultrasonic.readDistanceCm()) / (TANK_EMPTY_DISTANCE_CM - TANK_FULL_DISTANCE_CM) * 100.0f;
 
-  Serial.print("ultra: ");
-  Serial.print(dist);
-  Serial.println(" cm");
+  // Clamp: a reading slightly past either calibration point (sensor noise, tank
+  // slightly overfilled, etc.) shouldn't report an out-of-range percentage.
+  percent = std::max(0.0f, std::min(100.0f, percent));
 
-  return dist;
+  return percent;
 }
+
 
 
 /* old implementation below:

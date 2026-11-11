@@ -23,7 +23,7 @@ Internal pull-up is used, so:
 
 class FloatSwitch {
 public:
-  FloatSwitch(uint8_t pin, uint16_t debounceMs = 1000);
+  FloatSwitch(uint8_t pin, uint16_t debounceMs);
 
   // Configure the pin and take an initial reading. Call once in setup().
   void begin();

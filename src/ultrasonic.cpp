@@ -2,22 +2,30 @@
 
 #include <Arduino.h>
 
+UltrasonicSensor::UltrasonicSensor(uint8_t echoPin_, uint8_t trigPin_){
+  echoPin = echoPin_;
+  trigPin = trigPin_;
+  lastDistanceCm = -1.0f;  // Initialize to -1.0f to indicate no reading yet
+  pinMode(echoPin, INPUT);
+  pinMode(trigPin, OUTPUT);
+}
+
 // Triggers the ultrasonic ranger and returns the measured distance in cm,
 // or -1.0f if no echo was received (sensor fault/out of range)
 float UltrasonicSensor::readDistanceCm() {
 
   // Ensure trigger pin is low
-  digitalWrite(_trigPin, LOW);
+  digitalWrite(trigPin, LOW);
   delayMicroseconds(2);
 
   // 10 us pulse to the trigger pin
-  digitalWrite(_trigPin, HIGH);
+  digitalWrite(trigPin, HIGH);
   delayMicroseconds(10);
 
-  digitalWrite(_trigPin, LOW);
+  digitalWrite(trigPin, LOW);
 
   // Read echo pulse duration with a 30,000us max timeout as a fail-safe
-  long duration = pulseIn(_echoPin, HIGH, 30000);
+  long duration = pulseIn(echoPin, HIGH, 30000);
 
   // guard
   if (duration == 0) {
