@@ -3,6 +3,7 @@
 #include <Preferences.h>
 
 class Tank;
+class MiniTank;
 class IoT;
 
 #define WEATHER_UPDATE_INTERVAL 86400000UL  // 24 hours in milliseconds

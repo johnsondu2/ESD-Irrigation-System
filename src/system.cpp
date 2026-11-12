@@ -6,6 +6,7 @@
 #include "config.h"
 #include "iot.h"
 #include "tank.h"
+#include "tankmini.h"
 
 IrrigationSystem::IrrigationSystem(Tank& tank, IoT& iot) : tank(tank), iot(iot) {}
 

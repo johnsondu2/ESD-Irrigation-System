@@ -5,6 +5,7 @@
 #include "iot.h"
 #include "system.h" 
 #include "tank.h"
+#include "tankmini.h"
 #include "ultrasonic.h"
 
 // Pin configs
@@ -18,12 +19,14 @@ FloatSwitch floatTank(TANK_FLOAT_PIN, FLOAT_DEBOUNCE_MS);
 FloatSwitch floatMiniTank(MINI_TANK_FLOAT_PIN, FLOAT_DEBOUNCE_MS);
 UltrasonicSensor ultrasonic(ULTRA_ECHO_PIN, ULTRA_TRIG_PIN);
 Tank* tank = nullptr;  // created in setup() so pin setup happens after the Arduino core is up
+MiniTank* miniTank = nullptr;  // created in setup() so pin setup happens after the Arduino core is up
 IoT* iot = nullptr;
 IrrigationSystem* irrigationSystem = nullptr;
 
 void setup() {
   floatMiniTank.begin();
   tank = new Tank(floatTank, ultrasonic);
+  miniTank = new MiniTank(floatMiniTank);
   iot = new IoT(*tank);
   irrigationSystem = new IrrigationSystem(*tank, *iot);
 
