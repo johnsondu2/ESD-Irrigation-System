@@ -8,7 +8,7 @@
 static const char* TB_SERVER = "thingsboard.cloud";
 static const int TB_PORT = 1883;  // switch to 8883 when we finalise evertyhing (encryption)
 
-static const unsigned long TELEMETRY_INTERVAL_MS = 30000;  // publish every 30s, tune as needed
+static const unsigned long TELEMETRY_INTERVAL_MS = 3000;  // publish every 3s, tune as needed
 
 // ——————————————————————————————————— public ———————————————————————————————————
 

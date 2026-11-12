@@ -5,6 +5,7 @@
 class Tank;
 class MiniTank;
 class IoT;
+class Pump;
 
 #define WEATHER_UPDATE_INTERVAL 86400000UL  // 24 hours in milliseconds
 
@@ -31,7 +32,7 @@ enum State {
 
 class IrrigationSystem {
 public:
-  IrrigationSystem(Tank& tank, MiniTank& miniTank, IoT& iot);
+  IrrigationSystem(Tank& tank, MiniTank& miniTank, IoT& iot, Pump& pump);
 
   void begin();
   void update();
@@ -46,6 +47,7 @@ private:
   Tank& tank;
   MiniTank& miniTank;
   IoT& iot;
+  Pump& pump;
 
   // Object to handle non-volatile storage (NVS) for persisting the soil moisture deficit across reboots
   Preferences preferences;  // NVS-backed storage so the deficit survives reboots
@@ -53,6 +55,8 @@ private:
   // global variables for the system
   State state = IDLE;                    // Initialize the system state to IDLE
   float deficitMm = 0.0f;                // Running soil moisture deficit (mm)
+
+  bool needToPump = false;                 // Flag to indicate if watering is needed
 
   // variables for weather data tracking
   unsigned long lastWeatherUpdate = 0;  // Variable to track the last time weather data was updated

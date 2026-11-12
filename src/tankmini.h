@@ -7,7 +7,7 @@ class MiniTank {
 public:
   MiniTank(FloatSwitch& HighSwitch);
 
-  bool IsPumpedWaterEnough();
+  bool IsFull();
 
 private:
     FloatSwitch& tank_float;

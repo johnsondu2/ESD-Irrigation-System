@@ -7,8 +7,11 @@
 #include "iot.h"
 #include "tank.h"
 #include "tankmini.h"
+#include "pump.h"
 
-IrrigationSystem::IrrigationSystem(Tank& tank, MiniTank& miniTank, IoT& iot) : tank(tank), miniTank(miniTank), iot(iot) {}
+#define BTN_PIN 0
+
+IrrigationSystem::IrrigationSystem(Tank& tank, MiniTank& miniTank, IoT& iot, Pump& pump) : tank(tank), miniTank(miniTank), iot(iot), pump(pump) {}
 
 void IrrigationSystem::begin() {
   // Initialize serial communication for debugging
@@ -31,97 +34,95 @@ void IrrigationSystem::begin() {
   preferences.begin("irrigation", false);
   deficitMm = preferences.getFloat("deficit_mm", 0.0f);
 
-  // Set output pins for the water pump and valve
-  //pinMode(WATER_PUMP_PIN, OUTPUT);
-  // pinMode(VALVE_PIN, OUTPUT);
-
   // Connect to ThingsBoard and start reporting (WiFi is already up at this point)
   iot.begin();
+
+  pinMode(BTN_PIN, INPUT_PULLUP);
 }
 
 void IrrigationSystem::update() {
 
+  // Keeps the MQTT connection alive and publishes telemetry on its own timer.
+    // Runs every cycle regardless of system state.
+    iot.loop(state, deficitMm);
+
+  // Attempts to reconnect to WiFi if disconnected, but only every 10 seconds to avoid spamming the network
+  if (WiFi.status() != WL_CONNECTED) {
+    static unsigned long lastReconnectAttempt = 0;
+
+    if (millis() - lastReconnectAttempt >= 10000) {
+      lastReconnectAttempt = millis();
+      WiFi.reconnect();
+    }
+  }
+
+  // print state every second for debugging
+    static unsigned long lastStatePrint = 0;
+    if (millis() - lastStatePrint >= 1000) {
+      lastStatePrint = millis();
+      Serial.printf("[%lu ms] Current state: %d, deficit: %.2f mm\n", millis(), state, deficitMm);
+    }
+
   switch (state) {
+
     case IDLE:
-      // Regularly check for weather updates once a day (or on system bootup) if WiFi is connected
-      if ((!initialFetchDone || (millis() - lastWeatherUpdate >= WEATHER_UPDATE_INTERVAL)) && (WiFi.status() == WL_CONNECTED)) {
-        // Update the last weather update timestamp
-        lastWeatherUpdate = millis();
 
-        // Create a WeatherData struct to hold the fetched data
-        WeatherData currentWeather;
+      if (tank.IsTankEmpty()) {
+        Serial.println("Water tank is empty - cannot water the mini tank.");
+        state = NO_WATER;
+        break;
+      } 
 
-        // Fetch weather data and check if successful
-        if (fetchWeatherData(currentWeather)) {
-          initialFetchDone = true;  // Mark that the initial weather data has been fetched from the API
-
-          DayForecast& today = currentWeather.days[1];
-          DayForecast& tomorrow = currentWeather.days[2];
-          // index 1 is today's data, index 0 is yesterday's, indices 2 and 3 are the next two days' forecasts.
-
-          // 1. Update the running water balance: ET0 is water lost, rain is water gained. Floor at 0 to avoid negative deficit.
-          deficitMm += today.evapotranspiration - today.rain;
-          deficitMm = max(deficitMm, 0.0f);
-
-          // 2. Forecast-based skip guard: don't water if significant rain is expected tomorrow
-          bool skipForForecast = (tomorrow.rainProbMax >= RAIN_SKIP_PROB_PERCENT) || (tomorrow.rain >= RAIN_SKIP_MM);
-
-          // 3. Trigger watering if the deficit has crossed the threshold and rain isn't imminent
-          if (deficitMm >= MAD_THRESHOLD_MM && !skipForForecast) {
-            if (IsTankEmpty()) {
-              // Don't open the valve/pump with no water available; persist the deficit and raise a fault instead
-              // Serial.println("Water tank empty - cannot start watering.");
-              preferences.putFloat("deficit_mm", deficitMm);
-              state = FAULTY;
-            } else {
-              wateringTargetMm = deficitMm;
-              wateringDurationMs = min((unsigned long)((wateringTargetMm / PUMP_FLOW_RATE_MM_PER_MIN) * 60000.0f), MAX_WATERING_MS);  // 60000 ms in a minute
-              StartWater();
-              wateringStart = millis();
-
-              state = WATERING;
-            }
-          } else {
-            // Not watering yet; persist the updated deficit so it carries over to tomorrow's fetch
-            preferences.putFloat("deficit_mm", deficitMm);
-          }
-        } else {
-          Serial.println("Failed to fetch weather. Using fallback sensor logic.");
-        }
+      if (digitalRead(BTN_PIN) == LOW) {   // pressed pulls the pin to GND
+       Serial.println("BOOT pressed");
+       delay(300);                        // crude debounce for a test
+       state = PUMPING;
+       needToPump = true;  // set the flag to indicate that watering is needed
+       break;
       }
       break;
+     
 
     case PUMPING: {
       // IsTankEmpty() is a cheap read of state pushed by the tank ESP32 (not a physical sensor poll), so it's
       // safe to check every loop iteration in case the tank runs dry mid-cycle
-      if (IsTankEmpty()) {
-        // Serial.println("Water tank ran empty mid-watering - aborting.");
+      if (miniTank.IsFull()) {
+        Serial.println("Mini tank is now full");
 
         StopPump();
-
-        // Don't reduce the deficit: we can't confirm how much water was actually delivered before running dry
-        preferences.putFloat("deficit_mm", deficitMm);
-        state = FAULTY;
+        state = IDLE;
+        needToPump = false;  // reset the flag since watering is complete
         break;
       }
 
-      if (millis() - wateringStart >= wateringDurationMs) {
+      if (tank.IsTankEmpty()) {
+        Serial.println("Water tank ran empty mid-watering - aborting.");
+
         StopPump();
+        state = NO_WATER;
+        break;
+      }
 
-        // Assume the target amount was delivered; reduce the deficit and persist it
-        deficitMm = max(deficitMm - wateringTargetMm, 0.0f);
-        preferences.putFloat("deficit_mm", deficitMm);
-
-        state = IDLE;
+      break;
+    }
+    case NO_WATER: {
+      // Check whether the tank has been refilled, and resume normal operation if so
+      if (!tank.IsTankEmpty()) {
+        if (needToPump) {
+          StartPump();  // resume watering if it was interrupted
+          Serial.println("Mini tank refilled - resuming normal operation.");
+          state = PUMPING;
+        } else {
+          Serial.println("Water tank refilled - returning to IDLE state.");
+          state = IDLE;
+        }
+        break;
       }
       break;
     }
+
     case FAULTY: {
-      // Check whether the tank has been refilled, and resume normal operation if so
-      if (!IsTankEmpty()) {
-        // Serial.println("Water tank refilled - resuming normal operation.");
-        state = IDLE;
-      }
+      // none here for now, will add logic to handle faults in the future
       break;
     }
   }

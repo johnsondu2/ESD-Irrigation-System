@@ -8,9 +8,9 @@ MiniTank::MiniTank(FloatSwitch& HighSwitch)
   tank_float.begin();  // Initialize the float switch pin
 }
 
-bool MiniTank::IsPumpedWaterEnough() {
-    if (!tank_float.isClosed()) {
-        return true;  // HIGH signal from the float switch indicates the tank is empty
+bool MiniTank::IsFull() {
+    if (tank_float.isClosed()) {
+        return true;  // LOW signal from the float switch indicates the tank is full
     }
     return false;
 }
