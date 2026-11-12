@@ -31,7 +31,7 @@ enum State {
 
 class IrrigationSystem {
 public:
-  IrrigationSystem(Tank& tank, IoT& iot);
+  IrrigationSystem(Tank& tank, MiniTank& miniTank, IoT& iot);
 
   void begin();
   void update();
@@ -44,6 +44,7 @@ private:
   void StopPump();
 
   Tank& tank;
+  MiniTank& miniTank;
   IoT& iot;
 
   // Object to handle non-volatile storage (NVS) for persisting the soil moisture deficit across reboots

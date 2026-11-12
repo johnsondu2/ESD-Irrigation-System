@@ -8,7 +8,7 @@
 #include "tank.h"
 #include "tankmini.h"
 
-IrrigationSystem::IrrigationSystem(Tank& tank, IoT& iot) : tank(tank), iot(iot) {}
+IrrigationSystem::IrrigationSystem(Tank& tank, MiniTank& miniTank, IoT& iot) : tank(tank), miniTank(miniTank), iot(iot) {}
 
 void IrrigationSystem::begin() {
   // Initialize serial communication for debugging

@@ -28,7 +28,7 @@ void setup() {
   tank = new Tank(floatTank, ultrasonic);
   miniTank = new MiniTank(floatMiniTank);
   iot = new IoT(*tank);
-  irrigationSystem = new IrrigationSystem(*tank, *iot);
+  irrigationSystem = new IrrigationSystem(*tank, *miniTank, *iot);
 
   irrigationSystem->begin();
 }
