@@ -14,7 +14,7 @@ static Preferences preferences;  // NVS-backed storage so the deficit survives r
 static State state = IDLE;                    // Initialize the system state to IDLE
 static float deficitMm = 0.0f;                // Running soil moisture deficit (mm)
 
-// the below is necessary?
+// the below is unnecessary?
 static float wateringTargetMm = 0.0f;         // Deficit amount being replaced by the in-progress watering event
 static unsigned long wateringStart = 0;       // millis() value when the current watering event began
 static unsigned long wateringDurationMs = 0;  // How long the current watering event should run for
