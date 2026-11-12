@@ -8,6 +8,8 @@
 #define NTP_SERVER "pool.ntp.org"     
 */
 
+/*
+
 #define WEATHER_UPDATE_INTERVAL 86400000UL  // 24 hours in milliseconds
 
 #define WATER_PUMP_PIN 5                                  // Example pin for water pump (to do: replace with actual pin number)
@@ -41,8 +43,10 @@ void StopWater();
 float GetDeficitMm();
 State GetState();
 
+*/
 // new stuff
 /*
 void CheckTime();
 bool ProcessWeatherData();
 */
+

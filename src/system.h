@@ -1,0 +1,58 @@
+#pragma once
+
+#include <Preferences.h>
+
+class Tank;
+class IoT;
+
+#define WEATHER_UPDATE_INTERVAL 86400000UL  // 24 hours in milliseconds
+
+#define WATER_PUMP_PIN 5                                  // Example pin for water pump (to do: replace with actual pin number)
+#define VALVE_PIN 4                                       // Example pin for valve (to do: replace with actual pin number)
+
+// constants for the control logic decision-making
+// NOTE: all of these are placeholders and need real-world testing/calibration
+#define MAD_THRESHOLD_MM 20.0f                                                          // deficit (mm) that triggers watering (Management Allowable Depletion)
+#define RAIN_SKIP_PROB_PERCENT 70                                                       // skip watering if tomorrow's rain probability >= this
+#define RAIN_SKIP_MM 5.0f                                                               // skip watering if tomorrow's forecasted rain >= this
+#define PUMP_FLOW_RATE_L_PER_MIN 5.0f                                                   // placeholder: litres/minute delivered by the pump
+#define TOTAL_IRRIGATED_AREA_M2 10.0f                                                   // placeholder: combined bed area in square metres
+#define PUMP_FLOW_RATE_MM_PER_MIN (PUMP_FLOW_RATE_L_PER_MIN / TOTAL_IRRIGATED_AREA_M2)  // 1L over 1m^2 = 1mm depth
+#define MAX_WATERING_MS 1800000UL                                                       // 30 minute safety cap on a single watering event
+
+// Enums for the system states
+enum State {
+  IDLE,
+  PUMPING,
+  NO_WATER,
+  FAULTY
+};
+
+class IrrigationSystem {
+public:
+  IrrigationSystem(Tank& tank, IoT& iot);
+
+  void begin();
+  void update();
+
+  float GetDeficitMm();
+  State GetState();
+
+private:
+  void StartPump();
+  void StopPump();
+
+  Tank& tank;
+  IoT& iot;
+
+  // Object to handle non-volatile storage (NVS) for persisting the soil moisture deficit across reboots
+  Preferences preferences;  // NVS-backed storage so the deficit survives reboots
+
+  // global variables for the system
+  State state = IDLE;                    // Initialize the system state to IDLE
+  float deficitMm = 0.0f;                // Running soil moisture deficit (mm)
+
+  // variables for weather data tracking
+  unsigned long lastWeatherUpdate = 0;  // Variable to track the last time weather data was updated
+  bool initialFetchDone = false;        // Flag to force the system to call the API weather data as soon as the system is booted up
+};

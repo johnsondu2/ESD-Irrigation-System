@@ -23,7 +23,7 @@ void IoT::begin() {
   _mqttClient.setServer(TB_SERVER, TB_PORT);
 }
 
-void IoT::loop() {
+void IoT::loop(State state, float deficitMm) {
   if (!_mqttClient.connected()) {
     reconnectMQTT();
   }
@@ -31,18 +31,18 @@ void IoT::loop() {
 
   if (millis() - _lastTelemetryPublishMs >= TELEMETRY_INTERVAL_MS) {
     _lastTelemetryPublishMs = millis();
-    sendTelemetry();
+    sendTelemetry(state, deficitMm);
   }
 }
 
-void IoT::sendTelemetry() {
+void IoT::sendTelemetry(State state, float deficitMm) {
   JsonDocument telemetry;
 
-  telemetry["deficit_mm"] = GetDeficitMm();
+  telemetry["deficit_mm"] = deficitMm;
   telemetry["tank_empty"] = _tank.IsTankEmpty();
   telemetry["tank_level_percent"] = _tank.GetTankLevelPercent();
-  telemetry["state"] = stateToString(GetState());
-  telemetry["watering"] = (GetState() == PUMPING);
+  telemetry["state"] = stateToString(state);
+  telemetry["watering"] = (state == PUMPING);
 
   char buffer[256];
   serializeJson(telemetry, buffer);

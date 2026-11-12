@@ -1,44 +1,15 @@
 #include "system.h"
 
-#include <Preferences.h>
 #include <WiFi.h>
 
 #include "api.h"
 #include "config.h"
 #include "iot.h"
-#include "float_switch.h"
 #include "tank.h"
-#include "ultrasonic.h"
 
-// Pin configs
-#define TANK_FLOAT_PIN   25   // float used by the main-tank
-#define MINI_TANK_FLOAT_PIN  26   // second float, used by the mini-tank
-#define ULTRA_TRIG_PIN  16   
-#define ULTRA_ECHO_PIN  17
-#define FLOAT_DEBOUNCE_MS  1000
+IrrigationSystem::IrrigationSystem(Tank& tank, IoT& iot) : tank(tank), iot(iot) {}
 
-FloatSwitch floatTank(TANK_FLOAT_PIN, FLOAT_DEBOUNCE_MS);
-FloatSwitch floatMiniTank(MINI_TANK_FLOAT_PIN, FLOAT_DEBOUNCE_MS);
-UltrasonicSensor ultrasonic(ULTRA_ECHO_PIN, ULTRA_TRIG_PIN);
-Tank* tank = nullptr;  // created in setup() so pin setup happens after the Arduino core is up
-
-// Object to handle non-volatile storage (NVS) for persisting the soil moisture deficit across reboots
-static Preferences preferences;  // NVS-backed storage so the deficit survives reboots
-
-// global variables for the system
-static State state = IDLE;                    // Initialize the system state to IDLE
-static float deficitMm = 0.0f;                // Running soil moisture deficit (mm)
-
-// the below is unnecessary?
-static float wateringTargetMm = 0.0f;         // Deficit amount being replaced by the in-progress watering event
-static unsigned long wateringStart = 0;       // millis() value when the current watering event began
-static unsigned long wateringDurationMs = 0;  // How long the current watering event should run for
-
-// variables for weather data tracking
-static unsigned long lastWeatherUpdate = 0;  // Variable to track the last time weather data was updated
-static bool initialFetchDone = false;        // Flag to force the system to call the API weather data as soon as the system is booted up
-
-void SystemBegin() {
+void IrrigationSystem::begin() {
   // Initialize serial communication for debugging
   Serial.begin(115200);
   delay(1000);  // give the serial monitor time to connect
@@ -63,16 +34,11 @@ void SystemBegin() {
   //pinMode(WATER_PUMP_PIN, OUTPUT);
   // pinMode(VALVE_PIN, OUTPUT);
 
-  // create float variables for the water pump and valve pins
-
-  // create a Tank object to represent the water tank and its state
-  // Tank tan
-
   // Connect to ThingsBoard and start reporting (WiFi is already up at this point)
-  IoTSetup();
+  iot.begin();
 }
 
-void SystemUpdate() {
+void IrrigationSystem::update() {
 
   switch (state) {
     case IDLE:
@@ -160,17 +126,17 @@ void SystemUpdate() {
   }
 }
 
-void StartPump() {                   
+void IrrigationSystem::StartPump() {                   
   Serial.println("Starting pump and opening valve");
   //digitalWrite(VALVE_PIN, HIGH);       // assuming HIGH opens the valve
   //digitalWrite(WATER_PUMP_PIN, HIGH);  // assuming HIGH switches the pump on
 }
 
-void StopPump() {
+void IrrigationSystem::StopPump() {
   Serial.println("Stopping pump and closing valve");
   // digitalWrite(VALVE_PIN, LOW);       // assuming HIGH opens the valve
   // digitalWrite(WATER_PUMP_PIN, LOW);  // assuming HIGH switches the pump on
 }
 
-float GetDeficitMm() { return deficitMm; }
-State GetState() { return state; }
+float IrrigationSystem::GetDeficitMm() { return deficitMm; }
+State IrrigationSystem::GetState() { return state; }

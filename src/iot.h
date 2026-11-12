@@ -13,23 +13,21 @@
  * Usage:
  *   IoT iot(tank);
  *   void setup() { iot.begin(); }
- *   void loop()  { iot.loop(); }
+ *   void loop()  { iot.loop(state, deficitMm); }
  */
+
 class IoT {
 public:
-  // tank: the tank whose level/empty state is reported in telemetry
+  // tank to report % level in the telemetry
   IoT(Tank& tank);
 
   // Connects to WiFi and configures the MQTT server. Call once in setup().
   void begin();
 
-  // Call every loop iteration. Keeps the MQTT connection alive and publishes
-  // telemetry on its own internal timer.
-  void loop();
+  // to call every loop interaction
+  void loop(State state, float deficitMm);
 
-  // Publishes a telemetry snapshot immediately. loop() calls this on its timer;
-  // call it directly to force an out-of-cycle update (e.g. right after a state change).
-  void sendTelemetry();
+  void sendTelemetry(State state, float deficitMm);
 
 private:
   void connectWiFi();
