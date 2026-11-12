@@ -6,6 +6,21 @@
 #include "api.h"
 #include "config.h"
 #include "iot.h"
+#include "float_switch.h"
+#include "tank.h"
+#include "ultrasonic.h"
+
+// Pin configs
+#define TANK_FLOAT_PIN   25   // float used by the main-tank
+#define MINI_TANK_FLOAT_PIN  26   // second float, used by the mini-tank
+#define ULTRA_TRIG_PIN  16   
+#define ULTRA_ECHO_PIN  17
+#define FLOAT_DEBOUNCE_MS  1000
+
+FloatSwitch floatTank(TANK_FLOAT_PIN, FLOAT_DEBOUNCE_MS);
+FloatSwitch floatMiniTank(MINI_TANK_FLOAT_PIN, FLOAT_DEBOUNCE_MS);
+UltrasonicSensor ultrasonic(ULTRA_ECHO_PIN, ULTRA_TRIG_PIN);
+Tank* tank = nullptr;  // created in setup() so pin setup happens after the Arduino core is up
 
 // Object to handle non-volatile storage (NVS) for persisting the soil moisture deficit across reboots
 static Preferences preferences;  // NVS-backed storage so the deficit survives reboots
@@ -26,6 +41,7 @@ static bool initialFetchDone = false;        // Flag to force the system to call
 void SystemBegin() {
   // Initialize serial communication for debugging
   Serial.begin(115200);
+  delay(1000);  // give the serial monitor time to connect
 
   // Connect to WiFi
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -37,37 +53,26 @@ void SystemBegin() {
     Serial.print(".");
   }
 
-  Serial.println("\nConnected to WiFi!");
-
-  // Set output pins for the water pump and valve
-  pinMode(WATER_PUMP_PIN, OUTPUT);
-  pinMode(VALVE_PIN, OUTPUT);
-
-  // Start listening for tank level readings from the tank ESP32 (WiFi is already up at this point)
-  ReceiverBegin();
+   Serial.println("\nConnected to WiFi!");
 
   // Load the persisted soil moisture deficit so it survives reboots
   preferences.begin("irrigation", false);
   deficitMm = preferences.getFloat("deficit_mm", 0.0f);
+
+  // Set output pins for the water pump and valve
+  //pinMode(WATER_PUMP_PIN, OUTPUT);
+  // pinMode(VALVE_PIN, OUTPUT);
+
+  // create float variables for the water pump and valve pins
+
+  // create a Tank object to represent the water tank and its state
+  // Tank tan
 
   // Connect to ThingsBoard and start reporting (WiFi is already up at this point)
   IoTSetup();
 }
 
 void SystemUpdate() {
-  // Keeps the MQTT connection alive and publishes telemetry on its own timer.
-  // Runs every cycle regardless of system state.
-  IoTLoop();
-
-  // Attempts to reconnect to WiFi if disconnected, but only every 10 seconds to avoid spamming the network
-  if (WiFi.status() != WL_CONNECTED) {
-    static unsigned long lastReconnectAttempt = 0;
-
-    if (millis() - lastReconnectAttempt >= 10000) {
-      lastReconnectAttempt = millis();
-      WiFi.reconnect();
-    }
-  }
 
   switch (state) {
     case IDLE:
@@ -119,13 +124,13 @@ void SystemUpdate() {
       }
       break;
 
-    case WATERING: {
+    case PUMPING: {
       // IsTankEmpty() is a cheap read of state pushed by the tank ESP32 (not a physical sensor poll), so it's
       // safe to check every loop iteration in case the tank runs dry mid-cycle
       if (IsTankEmpty()) {
         // Serial.println("Water tank ran empty mid-watering - aborting.");
 
-        StopWater();
+        StopPump();
 
         // Don't reduce the deficit: we can't confirm how much water was actually delivered before running dry
         preferences.putFloat("deficit_mm", deficitMm);
@@ -134,7 +139,7 @@ void SystemUpdate() {
       }
 
       if (millis() - wateringStart >= wateringDurationMs) {
-        StopWater();
+        StopPump();
 
         // Assume the target amount was delivered; reduce the deficit and persist it
         deficitMm = max(deficitMm - wateringTargetMm, 0.0f);
@@ -155,14 +160,16 @@ void SystemUpdate() {
   }
 }
 
-void StartWater() {                    // replaced direct write with function
-  digitalWrite(VALVE_PIN, HIGH);       // assuming HIGH opens the valve
-  digitalWrite(WATER_PUMP_PIN, HIGH);  // assuming HIGH switches the pump on
+void StartPump() {                   
+  Serial.println("Starting pump and opening valve");
+  //digitalWrite(VALVE_PIN, HIGH);       // assuming HIGH opens the valve
+  //digitalWrite(WATER_PUMP_PIN, HIGH);  // assuming HIGH switches the pump on
 }
 
-void StopWater() {
-  digitalWrite(VALVE_PIN, LOW);       // assuming HIGH opens the valve
-  digitalWrite(WATER_PUMP_PIN, LOW);  // assuming HIGH switches the pump on
+void StopPump() {
+  Serial.println("Stopping pump and closing valve");
+  // digitalWrite(VALVE_PIN, LOW);       // assuming HIGH opens the valve
+  // digitalWrite(WATER_PUMP_PIN, LOW);  // assuming HIGH switches the pump on
 }
 
 float GetDeficitMm() { return deficitMm; }

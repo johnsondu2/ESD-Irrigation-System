@@ -27,20 +27,31 @@ void SystemBegin() {
   // Initialize serial communication for debugging
   Serial.begin(115200);
 
-  // wifi connection to add back here
+  // Connect to WiFi
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("Connecting to WiFi");
+
+  // Wait for connection
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\nConnected to WiFi!");
 
   // Set output pins for the water pump and valve
-  /* 
   pinMode(WATER_PUMP_PIN, OUTPUT);
   pinMode(VALVE_PIN, OUTPUT);
-  */
+
+  // Start listening for tank level readings from the tank ESP32 (WiFi is already up at this point)
+  ReceiverBegin();
 
   // Load the persisted soil moisture deficit so it survives reboots
   preferences.begin("irrigation", false);
   deficitMm = preferences.getFloat("deficit_mm", 0.0f);
 
   // Connect to ThingsBoard and start reporting (WiFi is already up at this point)
-  // IoTSetup();
+  IoTSetup();
 }
 
 void SystemUpdate() {
